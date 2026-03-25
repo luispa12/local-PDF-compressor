@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Compressor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=Instrument+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #f5f2ec;
+    --surface:  #edeae2;
+    --border:   #d8d3c8;
+    --text:     #1a1714;
+    --muted:    #8a8478;
+    --accent:   #2d5a27;
+    --accent2:  #5a8a52;
+    --danger:   #c0392b;
+    --radius:   14px;
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    font-family: 'Instrument Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  /* ── Grain overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+  }
+
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 4rem;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .logo-mark {
+    width: 52px; height: 52px;
+    background: var(--accent);
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+    box-shadow: 0 4px 16px #2d5a2730;
+  }
+
+  .logo-mark svg { width: 26px; height: 26px; color: #fff; }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    line-height: 1.1;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-top: 0.4rem;
+    font-weight: 300;
+  }
+
+  .privacy-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #2d5a2712;
+    border: 1px solid #2d5a2730;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.3rem 0.75rem;
+    border-radius: 20px;
+    margin-top: 0.75rem;
+  }
+
+  /* ── Drop zone ── */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .drop-zone:hover, .drop-zone.over {
+    border-color: var(--accent);
+    background: #2d5a2708;
+  }
+
+  .drop-zone input {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+
+  .drop-icon {
+    width: 44px; height: 44px;
+    background: var(--border);
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .drop-icon svg { width: 22px; height: 22px; color: var(--muted); }
+
+  .drop-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .drop-sub {
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 0.25rem;
+  }
+
+  /* ── File info bar ── */
+  .file-bar {
+    display: none;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+    margin-top: 0.75rem;
+  }
+
+  .file-bar.visible { display: flex; }
+
+  .file-icon {
+    width: 36px; height: 36px;
+    background: #2d5a2715;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .file-icon svg { width: 18px; height: 18px; color: var(--accent); }
+
+  .file-meta { flex: 1; min-width: 0; }
+  .file-name { font-size: 0.88rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-size { font-size: 0.78rem; color: var(--muted); margin-top: 0.1rem; }
+
+  .btn-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); padding: 4px;
+    border-radius: 6px; transition: color 0.15s;
+  }
+  .btn-remove:hover { color: var(--danger); }
+
+  /* ── Settings card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-top: 0.75rem;
+  }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  /* Preset buttons */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .preset-btn {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 0.75rem 0.5rem;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+
+  .preset-btn:hover { border-color: var(--accent2); }
+
+  .preset-btn.active {
+    border-color: var(--accent);
+    background: #2d5a2710;
+  }
+
+  .preset-btn .pb-icon { font-size: 1.3rem; margin-bottom: 0.3rem; }
+  .preset-btn .pb-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text);
+    display: block;
+  }
+  .preset-btn .pb-desc {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 0.15rem;
+    display: block;
+  }
+
+  /* Sliders */
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .slider-group label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+    font-weight: 500;
+  }
+
+  .slider-group label span {
+    font-family: 'Syne', monospace;
+    font-size: 0.82rem;
+    color: var(--accent);
+    background: #2d5a2712;
+    padding: 0.15rem 0.5rem;
+    border-radius: 5px;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%; height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 6px #2d5a2740;
+  }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .toggle-label { font-size: 0.85rem; font-weight: 500; }
+  .toggle-sub { font-size: 0.76rem; color: var(--muted); margin-top: 0.1rem; }
+
+  .toggle {
+    position: relative;
+    width: 42px; height: 24px;
+    flex-shrink: 0;
+  }
+
+  .toggle input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    left: 3px; bottom: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: 0.2s;
+    box-shadow: 0 1px 4px #0002;
+  }
+
+  .toggle input:checked + .toggle-slider { background: var(--accent); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+  /* ── Compress button ── */
+  .btn-compress {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-family: 'Syne', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.01em;
+    box-shadow: 0 4px 14px #2d5a2730;
+  }
+
+  .btn-compress:hover:not(:disabled) {
+    background: #234820;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px #2d5a2740;
+  }
+
+  .btn-compress:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* ── Progress ── */
+  .progress-wrap {
+    display: none;
+    margin-top: 0.75rem;
+  }
+
+  .progress-wrap.visible { display: block; }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .progress-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 3px;
+    transition: width 0.3s;
+    width: 0%;
+  }
+
+  /* ── Result ── */
+  .result-card {
+    display: none;
+    background: #2d5a270c;
+    border: 1px solid #2d5a2730;
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin-top: 0.75rem;
+    text-align: center;
+  }
+
+  .result-card.visible { display: block; }
+
+  .result-sizes {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .rs-block { text-align: center; }
+
+  .rs-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 0.2rem;
+  }
+
+  .rs-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .rs-value.old { color: var(--muted); text-decoration: line-through; }
+  .rs-value.new { color: var(--accent); }
+
+  .rs-arrow { color: var(--border); font-size: 1.2rem; }
+
+  .reduction-badge {
+    display: inline-block;
+    background: #2d5a2718;
+    border: 1px solid #2d5a2735;
+    color: var(--accent);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 20px;
+    margin-bottom: 1rem;
+  }
+
+  .btn-download {
+    width: 100%;
+    padding: 0.9rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1.5px solid var(--accent);
+    border-radius: var(--radius);
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: block;
+  }
+
+  .btn-download:hover {
+    background: var(--accent);
+    color: white;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    margin-top: 3rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  footer strong { color: var(--accent); }
+
+  @media (max-width: 400px) {
+    h1 { font-size: 1.6rem; }
+    .preset-grid { grid-template-columns: repeat(3,1fr); gap: 0.35rem; }
+    .preset-btn { padding: 0.6rem 0.3rem; }
+    .preset-btn .pb-icon { font-size: 1.1rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+
+  <header>
+    <div class="logo-mark">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-3-3v6M4 6h16M4 18h16M7 6V4a1 1 0 011-1h8a1 1 0 011 1v2"/>
+      </svg>
+    </div>
+    <h1>PDF <span>Compressor</span></h1>
+    <p class="subtitle">Reduce el peso de tus PDFs escaneados</p>
+    <div class="privacy-pill">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+      100% privado — todo ocurre en tu dispositivo
+    </div>
+  </header>
+
+  <!-- Drop zone -->
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" accept=".pdf">
+    <div class="drop-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+      </svg>
+    </div>
+    <div class="drop-title">Arrastra tu PDF aquí</div>
+    <div class="drop-sub">o toca para seleccionar</div>
+  </div>
+
+  <!-- File info -->
+  <div class="file-bar" id="fileBar">
+    <div class="file-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+    </div>
+    <div class="file-meta">
+      <div class="file-name" id="fileName">—</div>
+      <div class="file-size" id="fileSize">—</div>
+    </div>
+    <button class="btn-remove" id="btnRemove" title="Quitar archivo">
+      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Settings -->
+  <div class="card">
+    <div class="card-title">Nivel de compresión</div>
+
+    <div class="preset-grid">
+      <button class="preset-btn" data-preset="light" onclick="setPreset('light',this)">
+        <div class="pb-icon">🟢</div>
+        <span class="pb-label">Ligero</span>
+        <span class="pb-desc">96 DPI · q35</span>
+      </button>
+      <button class="preset-btn active" data-preset="balanced" onclick="setPreset('balanced',this)">
+        <div class="pb-icon">🟡</div>
+        <span class="pb-label">Balance</span>
+        <span class="pb-desc">72 DPI · q25</span>
+      </button>
+      <button class="preset-btn" data-preset="aggressive" onclick="setPreset('aggressive',this)">
+        <div class="pb-icon">🔴</div>
+        <span class="pb-label">Agresivo</span>
+        <span class="pb-desc">60 DPI · q15</span>
+      </button>
+    </div>
+
+    <div class="slider-row">
+      <div class="slider-group">
+        <label>Resolución (DPI) <span id="dpiVal">72</span></label>
+        <input type="range" id="dpiSlider" min="40" max="150" value="72" step="10"
+          oninput="document.getElementById('dpiVal').textContent=this.value; clearPreset()">
+      </div>
+      <div class="slider-group">
+        <label>Calidad JPEG <span id="qVal">25</span></label>
+        <input type="range" id="qSlider" min="5" max="70" value="25" step="5"
+          oninput="document.getElementById('qVal').textContent=this.value; clearPreset()">
+      </div>
+    </div>
+
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Mantener color</div>
+        <div class="toggle-sub">Desactiva para escala de grises (más pequeño)</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="colorToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <!-- Compress button -->
+  <button class="btn-compress" id="btnCompress" disabled onclick="startCompression()">
+    Comprimir PDF
+  </button>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-label">
+      <span id="progressText">Procesando...</span>
+      <span id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div class="result-card" id="resultCard">
+    <div class="result-sizes">
+      <div class="rs-block">
+        <div class="rs-label">Original</div>
+        <div class="rs-value old" id="origSize">—</div>
+      </div>
+      <div class="rs-arrow">→</div>
+      <div class="rs-block">
+        <div class="rs-label">Comprimido</div>
+        <div class="rs-value new" id="compSize">—</div>
+      </div>
+    </div>
+    <div class="reduction-badge" id="reductionBadge">↓ 0%</div>
+    <a class="btn-download" id="btnDownload" href="#" download>
+      ⬇ Descargar PDF comprimido
+    </a>
+  </div>
+
+  <footer>
+    <p>Tus archivos <strong>nunca</strong> salen de tu dispositivo.</p>
+    <p style="margin-top:0.3rem">Todo el procesamiento ocurre localmente en tu navegador.</p>
+  </footer>
+
+</div>
+
+<script>
+  // ── PDF.js worker ──────────────────────────────────────────────────────────
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let selectedFile = null;
+
+  // ── Preset definitions ─────────────────────────────────────────────────────
+  const PRESETS = {
+    light:      { dpi: 96, q: 35 },
+    balanced:   { dpi: 72, q: 25 },
+    aggressive: { dpi: 60, q: 15 },
+  };
+
+  function setPreset(key, el) {
+    const p = PRESETS[key];
+    document.getElementById('dpiSlider').value = p.dpi;
+    document.getElementById('qSlider').value   = p.q;
+    document.getElementById('dpiVal').textContent = p.dpi;
+    document.getElementById('qVal').textContent   = p.q;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function clearPreset() {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  }
+
+  // ── File handling ──────────────────────────────────────────────────────────
+  const dropZone  = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type === 'application/pdf') loadFile(f);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+  });
+
+  document.getElementById('btnRemove').addEventListener('click', clearFile);
+
+  function loadFile(f) {
+    selectedFile = f;
+    document.getElementById('fileName').textContent = f.name;
+    document.getElementById('fileSize').textContent = fmtSize(f.size);
+    document.getElementById('fileBar').classList.add('visible');
+    document.getElementById('btnCompress').disabled = false;
+    hideResult();
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    document.getElementById('fileBar').classList.remove('visible');
+    document.getElementById('btnCompress').disabled = true;
+    hideResult();
+  }
+
+  function hideResult() {
+    document.getElementById('resultCard').classList.remove('visible');
+    document.getElementById('progressWrap').classList.remove('visible');
+  }
+
+  // ── Compression ────────────────────────────────────────────────────────────
+  async function startCompression() {
+    if (!selectedFile) return;
+
+    const dpi     = parseInt(document.getElementById('dpiSlider').value);
+    const quality = parseInt(document.getElementById('qSlider').value) / 100;
+    const color   = document.getElementById('colorToggle').checked;
+    const scale   = dpi / 72;
+
+    // UI state
+    document.getElementById('btnCompress').disabled = true;
+    document.getElementById('progressWrap').classList.add('visible');
+    document.getElementById('resultCard').classList.remove('visible');
+    setProgress(0, 'Leyendo PDF...');
+
+    try {
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const numPages = pdfDoc.numPages;
+
+      const { jsPDF } = window.jspdf;
+      let pdf = null;
+
+      for (let i = 1; i <= numPages; i++) {
+        setProgress(
+          Math.round(((i - 1) / numPages) * 90),
+          `Página ${i} de ${numPages}...`
+        );
+
+        const page    = await pdfDoc.getPage(i);
+        const vp      = page.getViewport({ scale });
+        const canvas  = document.createElement('canvas');
+        canvas.width  = vp.width;
+        canvas.height = vp.height;
+        const ctx = canvas.getContext('2d');
+
+        // Grayscale filter if needed
+        if (!color) ctx.filter = 'grayscale(1)';
+
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+        const imgData = canvas.toDataURL('image/jpeg', quality);
+        const mmW = vp.width  * 0.264583;
+        const mmH = vp.height * 0.264583;
+
+        if (!pdf) {
+          pdf = new jsPDF({ orientation: mmW > mmH ? 'l' : 'p', unit: 'mm', format: [mmW, mmH] });
+        } else {
+          pdf.addPage([mmW, mmH], mmW > mmH ? 'l' : 'p');
+        }
+
+        pdf.addImage(imgData, 'JPEG', 0, 0, mmW, mmH, undefined, 'FAST');
+      }
+
+      setProgress(95, 'Generando archivo...');
+
+      const blob    = pdf.output('blob');
+      const url     = URL.createObjectURL(blob);
+      const outName = selectedFile.name.replace(/\.pdf$/i, '_comprimido.pdf');
+
+      setProgress(100, 'Listo');
+
+      // Show result
+      const origSize = selectedFile.size;
+      const compSize = blob.size;
+      const reduction = ((1 - compSize / origSize) * 100).toFixed(1);
+
+      document.getElementById('origSize').textContent = fmtSize(origSize);
+      document.getElementById('compSize').textContent = fmtSize(compSize);
+      document.getElementById('reductionBadge').textContent = `↓ ${reduction}% reducción`;
+
+      const dl = document.getElementById('btnDownload');
+      dl.href     = url;
+      dl.download = outName;
+
+      document.getElementById('resultCard').classList.add('visible');
+
+    } catch (err) {
+      console.error(err);
+      alert('Error al procesar el PDF. Asegúrate de que el archivo no esté protegido por contraseña.');
+    } finally {
+      document.getElementById('btnCompress').disabled = false;
+      document.getElementById('progressWrap').classList.remove('visible');
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  function setProgress(pct, label) {
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressPct').textContent = pct + '%';
+    document.getElementById('progressText').textContent = label;
+  }
+
+  function fmtSize(bytes) {
+    const mb = bytes / 1024 / 1024;
+    return mb >= 1 ? mb.toFixed(2) + ' MB' : (bytes / 1024).toFixed(0) + ' KB';
+  }
+</script>
+</body>
+</html>
